@@ -4,11 +4,12 @@ node_modules/
 # Build output
 dist/
 build/
+out/
+.vite/
 
 # Local caches and reports
 .cache/
 coverage/
-.vite/
 cross-context-window-debugger.md
 
 # Environment and secrets

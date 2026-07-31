@@ -43,6 +43,44 @@ button:disabled {
   margin-bottom: 18px;
 }
 
+.providerTabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 18px;
+  padding: 5px;
+  overflow-x: auto;
+  border: 1px solid #dce2e8;
+  border-radius: 9px;
+  background: #eef2f5;
+}
+
+.providerTabs button {
+  flex: 0 0 auto;
+  border-color: transparent;
+  background: transparent;
+  color: #5c6975;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.providerTabs button:hover {
+  color: #1f2933;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.providerTabs button.active {
+  border-color: #c9d2dc;
+  background: #ffffff;
+  color: #126f46;
+  box-shadow: 0 1px 2px rgba(31, 41, 51, 0.08);
+}
+
+.providerTabs button:focus-visible {
+  outline: 2px solid #16834b;
+  outline-offset: 1px;
+}
+
 h1,
 h2,
 p {
@@ -312,7 +350,7 @@ p {
 }
 
 .costPanel {
-  margin-top: 18px;
+  margin-top: 0;
 }
 
 .costTotals {

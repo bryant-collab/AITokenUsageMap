@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { defaultClaudeRootsFor, defaultCopilotCliRootsFor, defaultCopilotRootsFor, defaultCopilotUsageRootsFor } from "./config";
+import { cachePathForUserData, defaultClaudeRootsFor, defaultCopilotCliRootsFor, defaultCopilotRootsFor, defaultCopilotUsageRootsFor } from "./config";
 
 const rootsFor = (platform: NodeJS.Platform, env: NodeJS.ProcessEnv, home: string) => (
   defaultCopilotRootsFor(platform, env, home)
@@ -105,5 +105,13 @@ describe("defaultCopilotCliRootsFor", () => {
     expect(defaultCopilotCliRootsFor({}, path.join("home", "dev"))).toEqual([
       path.join("home", "dev", ".copilot", "session-state")
     ]);
+  });
+});
+
+describe("cachePathForUserData", () => {
+  it("stores generated scanner data beneath the application user-data directory", () => {
+    expect(cachePathForUserData(path.join("home", "dev", "AI Token Usage"))).toBe(
+      path.join("home", "dev", "AI Token Usage", "scanner-cache", "index.json")
+    );
   });
 });

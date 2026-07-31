@@ -1,9 +1,5 @@
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(dirname, "../..");
 
 const userHome = os.homedir() || process.env.USERPROFILE || process.env.HOME || "";
 const codexHome = process.env.CODEX_HOME || (userHome ? path.join(userHome, ".codex") : "");
@@ -60,7 +56,6 @@ const copilotRootsOverride = pathList(process.env.COPILOT_USAGE_ROOTS);
 const claudeRootsOverride = pathList(process.env.CLAUDE_USAGE_ROOTS);
 
 export const appConfig = {
-  port: Number(process.env.CODEX_USAGE_PORT || 5174),
   timezone: process.env.CODEX_USAGE_TZ || "America/Denver",
   codexRoots: [
     path.join(codexHome, "sessions"),
@@ -68,5 +63,14 @@ export const appConfig = {
   ],
   copilotRoots: copilotRootsOverride.length > 0 ? copilotRootsOverride : defaultCopilotUsageRootsFor(),
   claudeRoots: claudeRootsOverride.length > 0 ? claudeRootsOverride : defaultClaudeRootsFor(),
-  cachePath: path.join(repoRoot, ".cache", "ai-token-usage", "index.json")
+  cachePath: path.join(userHome || os.tmpdir(), ".ai-token-usage", "index.json")
+};
+
+export const cachePathForUserData = (userDataPath: string): string => (
+  path.join(userDataPath, "scanner-cache", "index.json")
+);
+
+export const configureUserDataPath = (userDataPath: string): void => {
+  if (!userDataPath.trim()) throw new Error("A user data path is required.");
+  appConfig.cachePath = cachePathForUserData(userDataPath);
 };

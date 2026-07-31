@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createRoot } from "react-dom/client";
 import { line } from "d3-shape";
 import { scaleLinear, scaleLog } from "d3-scale";
-import type { DashboardResponse, DayResponse, DayTotal, HarnessId, ModelPricing, ModelPricingUpdate, ModelUsageRangeResponse, PricingResponse, SummaryResponse, TokenUsage, WeeklyTotal } from "../shared/types";
+import type { DashboardResponse, DayResponse, DayTotal, HarnessId, ModelPricing, ModelPricingUpdate, ModelUsageRangeResponse, SummaryResponse, TokenUsage, WeeklyTotal } from "../shared/types";
 import { billableUsageParts, cachedInputModeForHarness, calculateUsageCost } from "../shared/costMath";
 import { addUsage, emptyUsage } from "../shared/tokenMath";
 import { formatDateInput, parseDateInput, showNativeDatePicker } from "./dateInput";
@@ -833,6 +833,7 @@ function HarnessDashboard({
 
 function App() {
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
+  const [activeTab, setActiveTab] = useState<HarnessId | "cost" | null>(null);
   const [selectedDates, setSelectedDates] = useState<Partial<Record<HarnessId, string>>>({});
   const [daysByHarness, setDaysByHarness] = useState<Partial<Record<HarnessId, DayResponse>>>({});
   const [pricingByModel, setPricingByModel] = useState<Record<string, ModelPricing>>({});
@@ -853,17 +854,38 @@ function App() {
     return [...models].sort();
   }, [costUsage]);
   const selectedModelKey = selectedModels.join("\0");
+  const tabOrder = useMemo<Array<HarnessId | "cost">>(() => [
+    ...(dashboard?.harnesses.map((summary) => summary.harness.id) ?? []),
+    "cost"
+  ], [dashboard]);
+
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, tab: HarnessId | "cost") => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const currentIndex = tabOrder.indexOf(tab);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? tabOrder.length - 1
+        : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabOrder.length) % tabOrder.length;
+    const nextTab = tabOrder[nextIndex];
+    if (!nextTab) return;
+    setActiveTab(nextTab);
+    requestAnimationFrame(() => document.getElementById(`tab-${nextTab}`)?.focus());
+  };
 
   const loadSummary = async () => {
     setError(null);
-    const response = await fetch("/api/summary");
-    if (!response.ok) throw new Error(await response.text());
-    const data = await response.json() as DashboardResponse;
+    const data = await window.desktopApi.getSummary();
     setDashboard(data);
-    setSelectedDates(Object.fromEntries(data.harnesses.map((summary) => [
+    setSelectedDates((current) => Object.fromEntries(data.harnesses.map((summary) => [
       summary.harness.id,
-      summary.today?.date ?? summary.peakDay?.date ?? data.range.to
+      current[summary.harness.id] ?? summary.today?.date ?? summary.peakDay?.date ?? data.range.to
     ])) as Partial<Record<HarnessId, string>>);
+    setActiveTab((current) => {
+      if (current === "cost" || data.harnesses.some((summary) => summary.harness.id === current)) return current;
+      return data.harnesses[0]?.harness.id ?? null;
+    });
     setCostRange((current) => current ?? { from: data.range.to, to: data.range.to });
     setLoading(false);
   };
@@ -876,74 +898,79 @@ function App() {
   }, []);
 
   useEffect(() => {
-    for (const [harness, selectedDate] of Object.entries(selectedDates) as Array<[HarnessId, string]>) {
-      if (!selectedDate) continue;
-      fetch(`/api/day/${harness}/${selectedDate}`)
-        .then((response) => response.json())
-        .then((data: DayResponse) => setDaysByHarness((current) => ({ ...current, [harness]: data })))
-        .catch(() => setDaysByHarness((current) => {
-          const next = { ...current };
-          delete next[harness];
+    if (!activeTab || activeTab === "cost") return;
+    const selectedDate = selectedDates[activeTab];
+    if (!selectedDate) return;
+
+    let current = true;
+    window.desktopApi.getDay(activeTab, selectedDate)
+      .then((data: DayResponse) => {
+        if (current) setDaysByHarness((days) => ({ ...days, [activeTab]: data }));
+      })
+      .catch(() => {
+        if (!current) return;
+        setDaysByHarness((days) => {
+          const next = { ...days };
+          delete next[activeTab];
           return next;
-        }));
-    }
-  }, [selectedDates]);
+        });
+      });
+
+    return () => {
+      current = false;
+    };
+  }, [activeTab, selectedDates]);
 
   useEffect(() => {
-    if (!costRange) return;
+    if (!costRange || activeTab !== "cost") return;
 
-    const controller = new AbortController();
-    const params = new URLSearchParams({ from: costRange.from, to: costRange.to });
+    let current = true;
     setCostLoading(true);
     setCostError(null);
-    fetch(`/api/model-usage?${params.toString()}`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(await response.text());
-        return response.json() as Promise<ModelUsageRangeResponse>;
-      })
+    window.desktopApi.getModelUsage(costRange.from, costRange.to)
       .then((data) => {
+        if (!current) return;
         setCostUsage(data);
         setCostLoading(false);
       })
       .catch((err) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (!current) return;
         setCostError(err instanceof Error ? err.message : "Failed to load cost range");
         setCostLoading(false);
       });
 
-    return () => controller.abort();
-  }, [costRange, costReloadToken]);
+    return () => {
+      current = false;
+    };
+  }, [activeTab, costRange, costReloadToken]);
 
   useEffect(() => {
+    if (activeTab !== "cost") return;
     const missingModels = selectedModels.filter((model) => !pricingByModel[model]);
     if (missingModels.length === 0) return;
 
-    const controller = new AbortController();
-    const params = new URLSearchParams();
-    for (const model of missingModels) {
-      params.append("model", model);
-    }
-
+    let current = true;
     setPricingError(null);
-    fetch(`/api/pricing?${params.toString()}`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(await response.text());
-        return response.json() as Promise<PricingResponse>;
-      })
-      .then((data) => setPricingByModel((current) => {
-        const next = { ...current };
+    window.desktopApi.getPricing(missingModels)
+      .then((data) => {
+        if (!current) return;
+        setPricingByModel((rates) => {
+        const next = { ...rates };
         for (const rate of data.rates) {
           next[rate.model] = rate;
         }
         return next;
-      }))
+        });
+      })
       .catch((err) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (!current) return;
         setPricingError(err instanceof Error ? err.message : "Failed to load pricing");
       });
 
-    return () => controller.abort();
-  }, [pricingByModel, selectedModelKey, selectedModels]);
+    return () => {
+      current = false;
+    };
+  }, [activeTab, pricingByModel, selectedModelKey, selectedModels]);
 
   const selectDate = (harness: HarnessId, date: string) => {
     setSelectedDates((current) => ({ ...current, [harness]: date }));
@@ -956,22 +983,22 @@ function App() {
   }, []);
 
   const savePricing = async (update: ModelPricingUpdate) => {
-    const response = await fetch("/api/pricing", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(update)
-    });
-    if (!response.ok) throw new Error(await response.text());
-    const rate = await response.json() as ModelPricing;
+    const rate = await window.desktopApi.savePricing(update);
     setPricingByModel((current) => ({ ...current, [rate.model]: rate }));
   };
 
   const rescan = async () => {
     setRescanning(true);
-    await fetch("/api/rescan", { method: "POST" });
-    await loadSummary();
-    setCostReloadToken((current) => current + 1);
-    setRescanning(false);
+    setError(null);
+    try {
+      await window.desktopApi.rescan();
+      await loadSummary();
+      setCostReloadToken((current) => current + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to rescan local logs");
+    } finally {
+      setRescanning(false);
+    }
   };
 
   if (loading) return <main className="shell"><div className="emptyPanel">Scanning local AI usage logs...</div></main>;
@@ -991,25 +1018,68 @@ function App() {
 
       {dashboard && dashboard.harnesses.length > 0 ? (
         <>
-          {dashboard.harnesses.map((summary) => (
-            <HarnessDashboard
+          <nav className="providerTabs" role="tablist" aria-label="Usage views">
+            {dashboard.harnesses.map((summary) => (
+              <button
+                id={`tab-${summary.harness.id}`}
+                key={summary.harness.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === summary.harness.id}
+                aria-controls={`panel-${summary.harness.id}`}
+                tabIndex={activeTab === summary.harness.id ? 0 : -1}
+                className={activeTab === summary.harness.id ? "active" : ""}
+                onClick={() => setActiveTab(summary.harness.id)}
+                onKeyDown={(event) => handleTabKeyDown(event, summary.harness.id)}
+              >
+                {summary.harness.name}
+              </button>
+            ))}
+            <button
+              id="tab-cost"
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "cost"}
+              aria-controls="panel-cost"
+              tabIndex={activeTab === "cost" ? 0 : -1}
+              className={activeTab === "cost" ? "active" : ""}
+              onClick={() => setActiveTab("cost")}
+              onKeyDown={(event) => handleTabKeyDown(event, "cost")}
+            >
+              Cost Calculator
+            </button>
+          </nav>
+
+          {dashboard.harnesses.map((summary) => activeTab === summary.harness.id && (
+            <div
+              id={`panel-${summary.harness.id}`}
               key={summary.harness.id}
-              summary={summary}
-              selectedDate={selectedDates[summary.harness.id] ?? null}
-              day={daysByHarness[summary.harness.id] ?? null}
-              onSelectDate={selectDate}
-            />
+              role="tabpanel"
+              aria-labelledby={`tab-${summary.harness.id}`}
+            >
+              <HarnessDashboard
+                summary={summary}
+                selectedDate={selectedDates[summary.harness.id] ?? null}
+                day={daysByHarness[summary.harness.id] ?? null}
+                onSelectDate={selectDate}
+              />
+            </div>
           ))}
-          <CostAnalysisPanel
-            dashboardRange={dashboard.range}
-            range={costRange}
-            usage={costUsage}
-            loading={costLoading}
-            error={costError}
-            pricingByModel={pricingByModel}
-            onRangeChange={selectCostRange}
-            onSavePricing={savePricing}
-          />
+
+          {activeTab === "cost" && (
+            <div id="panel-cost" role="tabpanel" aria-labelledby="tab-cost">
+              <CostAnalysisPanel
+                dashboardRange={dashboard.range}
+                range={costRange}
+                usage={costUsage}
+                loading={costLoading}
+                error={costError}
+                pricingByModel={pricingByModel}
+                onRangeChange={selectCostRange}
+                onSavePricing={savePricing}
+              />
+            </div>
+          )}
         </>
       ) : (
         <div className="emptyPanel">No Codex, GitHub Copilot, or Claude Code token logs were found on this machine.</div>

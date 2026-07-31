@@ -1,6 +1,6 @@
-# AI Token Usage Dashboard
+# AI Token Usage
 
-Local dashboard for viewing token usage from supported AI coding tools.
+Cross-platform Electron application for viewing token usage from supported AI coding tools. All log parsing stays on the local machine.
 
 Supported sources:
 
@@ -8,7 +8,7 @@ Supported sources:
 - GitHub Copilot Chat/agent debug JSONL logs from VS Code and Copilot CLI session JSONL logs.
 - Claude Code local `/usage` aggregates and session transcript JSONL logs.
 
-The dashboard only shows sources that are present on the current machine. Developers who use one supported tool see one display. Developers with multiple supported tools installed see each detected source at the same time.
+The application only shows sources that are present on the current machine. Each detected provider gets its own tab, and the cross-provider cost calculator has a separate tab so the interface stays focused.
 
 For each detected source, the dashboard reports total, input, cached input, output, and reasoning tokens separately when those fields are present in local logs. It also includes a small "Why these numbers can mislead" disclosure for source-specific caveats such as local-only coverage, unofficial debug fields, cache accounting, log retention, and billing differences.
 
@@ -16,20 +16,37 @@ For each detected source, the dashboard reports total, input, cached input, outp
 
 The dashboard includes a cost analysis panel at the bottom of the page. Enter a start and end date, or use the calendar buttons to pick them, and the dashboard aggregates model usage across that date range. It estimates cost from input, cached input, and output token rates, and shows the total per model.
 
-The API server refreshes standard per-token rates from the official [OpenAI pricing](https://developers.openai.com/api/docs/pricing), [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing), and [GitHub Copilot models and pricing](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing) tables. Results are cached for six hours, and a verified built-in snapshot covers the current models when those sites are unavailable. Unknown models can be filled in directly in the dashboard with input, cached input, and output prices in USD per 1M tokens. Manual rates are remembered in memory for the running API server session and are cleared when the server restarts.
+The Electron main process refreshes standard per-token rates from the official [OpenAI pricing](https://developers.openai.com/api/docs/pricing), [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing), and [GitHub Copilot models and pricing](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing) tables. Results are cached for six hours, and a verified built-in snapshot covers the current models when those sites are unavailable. Unknown models can be filled in directly in the application with input, cached input, and output prices in USD per 1M tokens. Manual rates are remembered for the running application session and are cleared when the application exits.
 
 Cost values are local estimates. Subscription allowances, long-context requests, regional routing, batch discounts, cache writes, and provider-side billing adjustments can differ from the displayed standard per-token estimate. GitHub does not disclose the underlying model used by Copilot code review, so `codex-auto-review` cannot be assigned an official token rate.
 
-## Run
+## Development
+
+Node.js 22 LTS is recommended for the Electron Forge 7 toolchain.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the dashboard URL printed by the `[WEB]` Vite process. By default that is `http://127.0.0.1:5173`, but Vite may choose another port if `5173` is already in use.
+Electron opens the application window automatically. The renderer is sandboxed and communicates with the local scanner through a narrow, typed preload bridge; there is no localhost API server.
 
-The API runs separately on `http://127.0.0.1:5174`. That URL is for backend endpoints and health checks; it is not the dashboard.
+Useful commands:
+
+```bash
+npm test          # run unit tests
+npm run typecheck # check TypeScript
+npm run package   # create an unpacked application for this OS
+npm run make      # create native distributables for this OS
+```
+
+Forge writes packages and installers beneath `out/`. Native distributables are built on their target operating systems:
+
+- Windows: Squirrel Setup executable.
+- macOS: DMG and ZIP application bundles.
+- Linux: DEB and RPM packages.
+
+The GitHub Actions `Desktop builds` workflow can build all three platforms manually or for version tags. Builds are unsigned until platform signing and macOS notarization credentials are configured.
 
 By default, the scanner reads Codex logs from:
 
@@ -60,11 +77,12 @@ It reads Claude Code usage from:
 
 - `CODEX_HOME`: override the Codex home directory.
 - `CODEX_USAGE_TZ`: override the timezone. Defaults to `America/Denver`.
-- `CODEX_USAGE_PORT`: override the API port. Defaults to `5174`.
 - `COPILOT_HOME`: changes where Copilot CLI stores its config and session data. The dashboard follows this for CLI session logs.
 - `COPILOT_USAGE_ROOTS`: override all GitHub Copilot roots, including VS Code workspace storage and Copilot CLI session-state roots. Use the platform path delimiter (`;` on Windows, `:` on macOS/Linux) for multiple roots.
 - `CLAUDE_CONFIG_DIR`: override Claude Code's config/data directory. This matches Claude Code's own environment variable.
 - `CLAUDE_USAGE_ROOTS`: override Claude Code usage roots. Use the platform path delimiter (`;` on Windows, `:` on macOS/Linux) for multiple roots.
+
+Generated scanner cache data is stored beneath Electron's per-user application data directory, not beside the installed application. The cache contains parsed token metadata and can be safely rebuilt from the source logs.
 
 ## GitHub Copilot tracking
 

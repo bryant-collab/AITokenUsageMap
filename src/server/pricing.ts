@@ -354,7 +354,7 @@ const missingPricing = (model: string, normalizedModel: string): ModelPricing =>
     sourceUrl: isCopilotCodeReview ? GITHUB_COPILOT_PRICING_URL : null,
     notes: [isCopilotCodeReview
       ? "GitHub does not disclose the model selected for Copilot code review, so an official per-token rate cannot be assigned."
-      : "No matching official rate was found. Enter rates to estimate this model for the current server session."],
+      : "No matching official rate was found. Enter rates to estimate this model for the current application session."],
     updatedAt: null,
     cachedAt: new Date().toISOString()
   };
@@ -416,7 +416,7 @@ export const setManualPricing = (update: ModelPricingUpdate): ModelPricing => {
     cachedInputUsdPerMillion,
     outputUsdPerMillion,
     sourceUrl: null,
-    notes: ["Manual rate stored in memory for this API server session."],
+    notes: ["Manual rate stored in memory for this application session."],
     updatedAt: new Date().toISOString(),
     cachedAt: new Date().toISOString()
   };
