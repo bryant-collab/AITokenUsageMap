@@ -33,7 +33,7 @@ const config: ForgeConfig = {
       options: { icon: linuxIcon, bin: "ai-token-usage" }
     }),
     new MakerRpm({
-      options: { icon: linuxIcon, bin: "ai-token-usage" }
+      options: { icon: linuxIcon, bin: "ai-token-usage", license: "MIT" }
     })
   ],
   plugins: [

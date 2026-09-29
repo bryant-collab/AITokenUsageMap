@@ -1,9 +1,10 @@
 {
   "name": "codex-token-usage",
   "productName": "AI Token Usage",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A private desktop dashboard for local AI coding token usage.",
   "author": "skunkmonkey",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "main": ".vite/build/main.cjs",
