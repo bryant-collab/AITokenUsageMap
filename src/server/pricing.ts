@@ -1,7 +1,8 @@
 import type { ModelPricing, ModelPricingProvider, ModelPricingUpdate, PricingResponse } from "../shared/types";
 
-const FALLBACK_CATALOG_UPDATED_AT = "2026-07-16";
+const FALLBACK_CATALOG_UPDATED_AT = "2026-09-29";
 const OPENAI_PRICING_URL = "https://developers.openai.com/api/docs/pricing";
+const OPENAI_PRICING_MARKDOWN_URL = `${OPENAI_PRICING_URL}.md`;
 const ANTHROPIC_PRICING_URL = "https://platform.claude.com/docs/en/about-claude/pricing";
 const GITHUB_COPILOT_PRICING_URL = "https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing";
 const GITHUB_COPILOT_PRICING_MARKDOWN_URL = "https://docs.github.com/api/article/body?pathname=/en/copilot/reference/copilot-billing/models-and-pricing";
@@ -25,19 +26,28 @@ const fallbackCatalog = new Map<string, CatalogEntry>([
   ["gpt-5.4-mini", { provider: "openai", inputUsdPerMillion: 0.75, cachedInputUsdPerMillion: 0.075, outputUsdPerMillion: 4.5, sourceUrl: OPENAI_PRICING_URL }],
   ["gpt-5.4-nano", { provider: "openai", inputUsdPerMillion: 0.2, cachedInputUsdPerMillion: 0.02, outputUsdPerMillion: 1.25, sourceUrl: OPENAI_PRICING_URL }],
   ["gpt-5.5", { provider: "openai", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, outputUsdPerMillion: 30, sourceUrl: OPENAI_PRICING_URL, notes: ["Requests over 272K input tokens use long-context rates; this estimate uses the default tier."] }],
-  ["gpt-5.6-sol", { provider: "openai", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, outputUsdPerMillion: 30, sourceUrl: OPENAI_PRICING_URL, notes: ["Requests over 272K input tokens use long-context rates; this estimate uses the default tier."] }],
-  ["gpt-5.6-terra", { provider: "openai", inputUsdPerMillion: 2.5, cachedInputUsdPerMillion: 0.25, outputUsdPerMillion: 15, sourceUrl: OPENAI_PRICING_URL, notes: ["Requests over 272K input tokens use long-context rates; this estimate uses the default tier."] }],
-  ["gpt-5.6-luna", { provider: "openai", inputUsdPerMillion: 1, cachedInputUsdPerMillion: 0.1, outputUsdPerMillion: 6, sourceUrl: OPENAI_PRICING_URL, notes: ["Requests over 200K input tokens use long-context rates; this estimate uses the default tier."] }],
+  ["gpt-5.6-sol", { provider: "openai", inputUsdPerMillion: 4, cachedInputUsdPerMillion: 0.4, outputUsdPerMillion: 20, sourceUrl: OPENAI_PRICING_URL, notes: ["Long-context requests have higher rates; this estimate uses the default tier."] }],
+  ["gpt-5.6-terra", { provider: "openai", inputUsdPerMillion: 2, cachedInputUsdPerMillion: 0.2, outputUsdPerMillion: 12, sourceUrl: OPENAI_PRICING_URL, notes: ["Long-context requests have higher rates; this estimate uses the default tier."] }],
+  ["gpt-5.6-luna", { provider: "openai", inputUsdPerMillion: 0.2, cachedInputUsdPerMillion: 0.02, outputUsdPerMillion: 1.2, sourceUrl: OPENAI_PRICING_URL, notes: ["Long-context requests have higher rates; this estimate uses the default tier."] }],
+  ["gpt-6-astra", { provider: "openai", inputUsdPerMillion: 10, cachedInputUsdPerMillion: 1, outputUsdPerMillion: 50, sourceUrl: OPENAI_PRICING_URL, notes: ["Long-context requests have higher rates; this estimate uses the default tier."] }],
+  ["gpt-6.1-sol", { provider: "openai", inputUsdPerMillion: 2, cachedInputUsdPerMillion: 0.1, outputUsdPerMillion: 10, sourceUrl: OPENAI_PRICING_URL, notes: ["Long-context requests have higher rates; this estimate uses the default tier."] }],
+  ["gpt-6-sol", { provider: "openai", inputUsdPerMillion: 2, cachedInputUsdPerMillion: 0.2, outputUsdPerMillion: 10, sourceUrl: OPENAI_PRICING_URL, notes: ["Long-context requests have higher rates; this estimate uses the default tier."] }],
+  ["gpt-6-luna", { provider: "openai", inputUsdPerMillion: 0.1, cachedInputUsdPerMillion: 0.01, outputUsdPerMillion: 0.5, sourceUrl: OPENAI_PRICING_URL, notes: ["Long-context requests have higher rates; this estimate uses the default tier."] }],
   ["chat-latest", { provider: "openai", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, outputUsdPerMillion: 30, sourceUrl: OPENAI_PRICING_URL }],
   ["claude-fable-5", { provider: "anthropic", inputUsdPerMillion: 10, cachedInputUsdPerMillion: 1, outputUsdPerMillion: 50, sourceUrl: ANTHROPIC_PRICING_URL }],
+  ["claude-fable-5.1", { provider: "anthropic", inputUsdPerMillion: 10, cachedInputUsdPerMillion: 0.25, outputUsdPerMillion: 50, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-mythos-5", { provider: "anthropic", inputUsdPerMillion: 10, cachedInputUsdPerMillion: 1, outputUsdPerMillion: 50, sourceUrl: ANTHROPIC_PRICING_URL, notes: ["Limited availability model."] }],
+  ["claude-mythos-5.1", { provider: "anthropic", inputUsdPerMillion: 10, cachedInputUsdPerMillion: 0.25, outputUsdPerMillion: 50, sourceUrl: ANTHROPIC_PRICING_URL, notes: ["Limited availability model."] }],
+  ["claude-opus-5.5", { provider: "anthropic", inputUsdPerMillion: 4, cachedInputUsdPerMillion: 0.2, outputUsdPerMillion: 20, sourceUrl: ANTHROPIC_PRICING_URL }],
+  ["claude-opus-5", { provider: "anthropic", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, outputUsdPerMillion: 25, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-opus-4.8", { provider: "anthropic", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, outputUsdPerMillion: 25, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-opus-4.7", { provider: "anthropic", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, outputUsdPerMillion: 25, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-opus-4.6", { provider: "anthropic", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, outputUsdPerMillion: 25, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-opus-4.5", { provider: "anthropic", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, outputUsdPerMillion: 25, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-opus-4.1", { provider: "anthropic", inputUsdPerMillion: 15, cachedInputUsdPerMillion: 1.5, outputUsdPerMillion: 75, sourceUrl: ANTHROPIC_PRICING_URL, notes: ["Deprecated model pricing."] }],
   ["claude-opus-4", { provider: "anthropic", inputUsdPerMillion: 15, cachedInputUsdPerMillion: 1.5, outputUsdPerMillion: 75, sourceUrl: ANTHROPIC_PRICING_URL, notes: ["Retired model pricing except on selected partner platforms."] }],
-  ["claude-sonnet-5", { provider: "anthropic", inputUsdPerMillion: 2, cachedInputUsdPerMillion: 0.2, outputUsdPerMillion: 10, sourceUrl: ANTHROPIC_PRICING_URL, notes: ["Promotional rate through August 31, 2026; see the official source for the current rate."] }],
+  ["claude-sonnet-5.5", { provider: "anthropic", inputUsdPerMillion: 2, cachedInputUsdPerMillion: 0.2, outputUsdPerMillion: 10, sourceUrl: ANTHROPIC_PRICING_URL }],
+  ["claude-sonnet-5", { provider: "anthropic", inputUsdPerMillion: 2, cachedInputUsdPerMillion: 0.2, outputUsdPerMillion: 10, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-sonnet-4.6", { provider: "anthropic", inputUsdPerMillion: 3, cachedInputUsdPerMillion: 0.3, outputUsdPerMillion: 15, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-sonnet-4.5", { provider: "anthropic", inputUsdPerMillion: 3, cachedInputUsdPerMillion: 0.3, outputUsdPerMillion: 15, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-sonnet-4", { provider: "anthropic", inputUsdPerMillion: 3, cachedInputUsdPerMillion: 0.3, outputUsdPerMillion: 15, sourceUrl: ANTHROPIC_PRICING_URL, notes: ["Retired model pricing except on selected partner platforms."] }],
@@ -156,9 +166,6 @@ export const parseGitHubCopilotPricing = (markdown: string, checkedAt: string): 
 
     const notes: string[] = [];
     if (cell("cache write")) notes.push("Cache writes have a separate rate; cached tokens here use the cache-read rate.");
-    if (displayModel.toLowerCase() === "claude sonnet 5") {
-      notes.push("Promotional rate through August 31, 2026; see the official source for the current rate.");
-    }
     catalog.set(key, {
       provider,
       inputUsdPerMillion: input,
@@ -246,6 +253,36 @@ export const parseOpenAIPricing = (html: string, checkedAt: string): Map<string,
   return catalog;
 };
 
+export const parseOpenAIMarkdownPricing = (markdown: string, checkedAt: string): Map<string, CatalogEntry> => {
+  const catalog = new Map<string, CatalogEntry>();
+  const standard = markdown.match(/### Standard pricing data\s*\n([\s\S]*?)(?=\n\s*### |\n\s*Batch\s*\n|$)/i)?.[1] ?? "";
+  for (const line of standard.split(/\r?\n/)) {
+    if (!line.trim().startsWith("|") || !line.trim().endsWith("|")) continue;
+    const cells = markdownCells(line);
+    if (cells.length < 5 || cells[0] === "Model" || isSeparatorRow(cells)) continue;
+    const rawModel = cells[0];
+    const match = rawModel.match(/^((?:gpt|chatgpt|o\d|codex)[a-z0-9.-]*(?:-[a-z0-9.-]+)*)/i);
+    if (!match) continue;
+    const input = priceFromCell(cells[1]);
+    const cached = priceFromCell(cells[2]);
+    const output = priceFromCell(cells[4]);
+    if (input === null || output === null) continue;
+    const notes: string[] = [];
+    if (priceFromCell(cells[5]) !== null) notes.push("Long-context requests have higher rates; this estimate uses the default tier.");
+    if (priceFromCell(cells[3]) !== null) notes.push("Cache writes have a separate rate that is not included in this estimate.");
+    catalog.set(normalizePricingModel(match[1]), {
+      provider: "openai",
+      inputUsdPerMillion: input,
+      cachedInputUsdPerMillion: cached,
+      outputUsdPerMillion: output,
+      sourceUrl: OPENAI_PRICING_URL,
+      notes,
+      updatedAt: checkedAt
+    });
+  }
+  return catalog;
+};
+
 export const parseAnthropicPricing = (markdown: string, checkedAt: string): Map<string, CatalogEntry> => {
   const catalog = new Map<string, CatalogEntry>();
   let headers: string[] | null = null;
@@ -269,15 +306,12 @@ export const parseAnthropicPricing = (markdown: string, checkedAt: string): Map<
     };
     const modelMatch = (cell("model") ?? "").match(/^(Claude\s+(?:Fable|Mythos|Opus|Sonnet|Haiku)\s+\d+(?:\.\d+)?)/i);
     const input = priceFromCell(cell("base input tokens"));
-    const cached = priceFromCell(cell("cache hits & refreshes"));
+    const cached = priceFromCell(cell("cache hits & refreshes") ?? cell("cache hits and refreshes"));
     const output = priceFromCell(cell("output tokens"));
     if (!modelMatch || input === null || output === null) continue;
 
     const displayModel = modelMatch[1];
     const notes = ["Cache writes have a separate rate; cached tokens here use the cache-read rate."];
-    if (/Claude Sonnet 5/i.test(displayModel)) {
-      notes.push("Promotional rate through August 31, 2026; see the official source for the current rate.");
-    }
     catalog.set(normalizePricingModel(displayModel), {
       provider: "anthropic",
       inputUsdPerMillion: input,
@@ -304,18 +338,18 @@ const refreshOfficialCatalog = async (): Promise<void> => {
 
   refreshInFlight = (async () => {
     const results = await Promise.allSettled([
-      fetchOfficialText(OPENAI_PRICING_URL, "text/html"),
+      fetchOfficialText(OPENAI_PRICING_MARKDOWN_URL, "text/markdown"),
       fetchOfficialText(ANTHROPIC_PRICING_URL, "text/markdown"),
       fetchOfficialText(GITHUB_COPILOT_PRICING_MARKDOWN_URL, "text/markdown")
     ]);
     try {
       const checkedAt = new Date().toISOString().slice(0, 10);
-      const openai = results[0].status === "fulfilled" ? parseOpenAIPricing(results[0].value, checkedAt) : new Map<string, CatalogEntry>();
+      const openai = results[0].status === "fulfilled" ? parseOpenAIMarkdownPricing(results[0].value, checkedAt) : new Map<string, CatalogEntry>();
       const anthropic = results[1].status === "fulfilled" ? parseAnthropicPricing(results[1].value, checkedAt) : new Map<string, CatalogEntry>();
       const copilot = results[2].status === "fulfilled" ? parseGitHubCopilotPricing(results[2].value, checkedAt) : new Map<string, CatalogEntry>();
       if (openai.size + anthropic.size + copilot.size === 0) throw new Error("Official pricing sources contained no recognized rates");
-      // Copilot's table is last because it is the billing authority for usage captured from Copilot logs.
-      activeCatalog = new Map([...fallbackCatalog, ...openai, ...anthropic, ...copilot]);
+      // Provider pricing is authoritative for API usage; Copilot fills models absent from those catalogs.
+      activeCatalog = new Map([...fallbackCatalog, ...copilot, ...openai, ...anthropic]);
       lookupCache.clear();
       refreshAfter = Date.now() + OFFICIAL_CATALOG_TTL_MS;
     } catch {

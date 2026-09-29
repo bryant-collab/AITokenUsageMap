@@ -43,6 +43,64 @@ button:disabled {
   margin-bottom: 18px;
 }
 
+.usageControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: center;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #dce2e8;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.usageControls form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+}
+
+.usageControls label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.usageControls input,
+.usageControls select {
+  max-width: 130px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #c9d2dc;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f2933;
+  font: inherit;
+  font-size: 13px;
+}
+
+.usageControls select { max-width: none; }
+.usageControls span { font-size: 13px; }
+.usageControls button { padding: 8px 10px; font-size: 13px; }
+
+.capNotice {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #c9d2dc;
+  border-radius: 7px;
+  background: #eef6f1;
+  font-size: 13px;
+}
+
+.capNotice > div { display: flex; flex-direction: column; gap: 2px; }
+.capNotice.capReached { border-color: #d09038; background: #fff1d8; color: #754510; }
+
 .providerTabs {
   display: flex;
   gap: 6px;
@@ -355,9 +413,22 @@ p {
 
 .costTotals {
   display: grid;
-  grid-template-columns: repeat(2, minmax(130px, 1fr));
-  gap: 18px;
-  min-width: 300px;
+  grid-template-columns: minmax(190px, 1fr) minmax(120px, auto);
+  gap: 14px;
+  min-width: 340px;
+  align-items: center;
+}
+
+.costTotals .miniStat:first-child {
+  padding: 10px 14px;
+  border: 1px solid #b7ddc6;
+  border-radius: 8px;
+  background: #edf8f0;
+}
+
+.costTotals .miniStat:first-child strong {
+  color: #075f34;
+  font-size: 28px;
 }
 
 .dateRangeControls {

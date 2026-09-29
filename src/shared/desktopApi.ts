@@ -14,7 +14,7 @@ export type DesktopApi = {
   getModelUsage: (from: string, to: string) => Promise<ModelUsageRangeResponse>;
   getPricing: (models: string[]) => Promise<PricingResponse>;
   savePricing: (update: ModelPricingUpdate) => Promise<ModelPricing>;
-  rescan: () => Promise<void>;
+  rescan: (force?: boolean) => Promise<void>;
 };
 
 export const desktopChannels = {

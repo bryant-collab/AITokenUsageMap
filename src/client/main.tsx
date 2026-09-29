@@ -6,6 +6,7 @@ import type { DashboardResponse, DayResponse, DayTotal, HarnessId, ModelPricing,
 import { billableUsageParts, cachedInputModeForHarness, calculateUsageCost } from "../shared/costMath";
 import { addUsage, emptyUsage } from "../shared/tokenMath";
 import { formatDateInput, parseDateInput, showNativeDatePicker } from "./dateInput";
+import { capSpentUsd, dateInZone, readCapSettings, saveCapSettings } from "./capSettings";
 import "./styles.css";
 
 const tokenFormat = new Intl.NumberFormat("en-US", {
@@ -593,13 +594,13 @@ function CostAnalysisPanel({
         : endDate < startDate
           ? "End date must be on or after start date."
           : null;
-  const totalValue = !validRange || loading || !activeUsage ? "Pending" : formatUsd(needsRates > 0 ? null : knownCost);
+  const totalValue = !validRange || loading || !activeUsage ? "Pending" : `${needsRates > 0 ? "≥" : ""}${formatUsd(knownCost)}`;
   const totalDetail = !validRange
     ? "Waiting for valid range"
     : loading || !activeUsage
       ? "Loading range"
       : needsRates > 0
-        ? `${needsRates} model${needsRates === 1 ? "" : "s"} need rates`
+        ? `Known cost only · ${needsRates} model${needsRates === 1 ? "" : "s"} need rates`
         : "All selected models";
 
   return (
@@ -610,7 +611,7 @@ function CostAnalysisPanel({
           <p>{validRange ? `${startDate} to ${endDate}` : `${dashboardRange.from} to ${dashboardRange.to}`}</p>
         </div>
         <div className="costTotals">
-          <MiniStat label="Estimated total" value={totalValue} detail={totalDetail} />
+          <MiniStat label="Total estimated cost · selected dates" value={totalValue} detail={totalDetail} />
           <MiniStat label="Official rates" value={fullFormat.format(lookupModels)} detail="Live source or verified fallback" />
         </div>
       </div>
@@ -846,6 +847,28 @@ function App() {
   const [rescanning, setRescanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pricingError, setPricingError] = useState<string | null>(null);
+  const [capSettings, setCapSettings] = useState(readCapSettings);
+  const [capLimitText, setCapLimitText] = useState(() => String(readCapSettings().limitUsd ?? ""));
+  const [refreshText, setRefreshText] = useState(() => String(readCapSettings().refreshMinutes ?? 60));
+  const [capUsage, setCapUsage] = useState<ModelUsageRangeResponse | null>(null);
+  const [capPricing, setCapPricing] = useState<Record<string, ModelPricing>>({});
+  const [capError, setCapError] = useState<string | null>(null);
+  const [capTick, setCapTick] = useState(0);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+  const scanInFlight = useRef(false);
+  const today = dashboard ? dateInZone(dashboard.range.timezone, currentTime) : null;
+  const month = today?.slice(0, 7) ?? null;
+  const capRows = capUsage?.range.from === `${month}-01` && capUsage.range.to === today ? capUsage.rows : null;
+  const capCost = capRows?.reduce((sum, row) => {
+    const pricing = capPricing[row.model] ?? pricingByModel[row.model];
+    const cost = pricing ? calculateUsageCost(row, pricing, cachedInputModeForHarness(row.harness.id)).totalCostUsd : null;
+    return sum + (cost ?? 0);
+  }, 0) ?? null;
+  const capMissingRates = capRows?.some((row) => {
+    const pricing = capPricing[row.model] ?? pricingByModel[row.model];
+    return !pricing || calculateUsageCost(row, pricing, cachedInputModeForHarness(row.harness.id)).totalCostUsd === null;
+  }) ?? false;
+  const capSpent = capCost !== null && month ? capSpentUsd(capCost, capSettings, month) : null;
   const selectedModels = useMemo(() => {
     const models = new Set<string>();
     for (const row of costUsage?.rows ?? []) {
@@ -895,6 +918,41 @@ function App() {
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
       setLoading(false);
     });
+  }, []);
+
+  useEffect(() => {
+    saveCapSettings(capSettings);
+  }, [capSettings]);
+
+  useEffect(() => {
+    if (!today || !month || capSettings.limitUsd === null) return;
+    let current = true;
+    setCapError(null);
+    window.desktopApi.getModelUsage(`${month}-01`, today)
+      .then(async (data) => {
+        const models = [...new Set(data.rows.map((row) => row.model))];
+        const rates = models.length ? await window.desktopApi.getPricing(models) : { rates: [] };
+        if (!current) return;
+        setCapUsage(data);
+        setCapPricing(Object.fromEntries(rates.rates.map((rate) => [rate.model, rate])));
+      })
+      .catch((err) => {
+        if (current) setCapError(err instanceof Error ? err.message : "Failed to calculate the monthly cap");
+      });
+    return () => { current = false; };
+  }, [today, month, capSettings.limitUsd, capTick]);
+
+  useEffect(() => {
+    if (capSettings.refreshMinutes === null) return;
+    const interval = window.setInterval(() => { void rescan(false); }, capSettings.refreshMinutes * 60_000);
+    return () => window.clearInterval(interval);
+  }, [capSettings.refreshMinutes]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60_000);
+    return () => window.clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -985,20 +1043,39 @@ function App() {
   const savePricing = async (update: ModelPricingUpdate) => {
     const rate = await window.desktopApi.savePricing(update);
     setPricingByModel((current) => ({ ...current, [rate.model]: rate }));
+    setCapPricing((current) => ({ ...current, [rate.model]: rate }));
   };
 
-  const rescan = async () => {
+  const rescan = async (force = true) => {
+    if (scanInFlight.current) return;
+    scanInFlight.current = true;
     setRescanning(true);
     setError(null);
     try {
-      await window.desktopApi.rescan();
+      await window.desktopApi.rescan(force);
       await loadSummary();
       setCostReloadToken((current) => current + 1);
+      setCapTick((current) => current + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to rescan local logs");
     } finally {
       setRescanning(false);
+      scanInFlight.current = false;
     }
+  };
+
+  const saveCap = (event: React.FormEvent) => {
+    event.preventDefault();
+    const limit = Number(capLimitText);
+    if (!Number.isFinite(limit) || limit <= 0) return;
+    setCapSettings((current) => ({ ...current, limitUsd: limit }));
+  };
+
+  const saveRefresh = (event: React.FormEvent) => {
+    event.preventDefault();
+    const minutes = Number(refreshText);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 10080) return;
+    setCapSettings((current) => ({ ...current, refreshMinutes: minutes }));
   };
 
   if (loading) return <main className="shell"><div className="emptyPanel">Scanning local AI usage logs...</div></main>;
@@ -1010,8 +1087,36 @@ function App() {
           <h1>AI Token Usage</h1>
           <p>Local token usage from detected AI coding harness logs.</p>
         </div>
-        <button onClick={rescan} disabled={rescanning}>{rescanning ? "Rescanning" : "Rescan"}</button>
+        <button onClick={() => { void rescan(); }} disabled={rescanning}>{rescanning ? "Rescanning" : "Rescan"}</button>
       </header>
+
+      <section className="usageControls" aria-label="Cost limit and scanning">
+        <form onSubmit={saveCap}>
+          <label htmlFor="cost-limit">Monthly cost alert (USD)</label>
+          <input id="cost-limit" type="number" min="0.01" step="0.01" value={capLimitText} onChange={(event) => setCapLimitText(event.target.value)} placeholder="No limit" />
+          <button type="submit">Set limit</button>
+          {capSettings.limitUsd !== null && <button type="button" onClick={() => { setCapSettings((current) => ({ ...current, limitUsd: null })); setCapLimitText(""); }}>Clear</button>}
+        </form>
+        <form onSubmit={saveRefresh}>
+          <label htmlFor="refresh-minutes">Scan logs</label>
+          <select value={capSettings.refreshMinutes === null ? "manual" : "automatic"} onChange={(event) => setCapSettings((current) => ({ ...current, refreshMinutes: event.target.value === "manual" ? null : Number(refreshText) || 60 }))}>
+            <option value="manual">Manually</option>
+            <option value="automatic">Automatically every</option>
+          </select>
+          {capSettings.refreshMinutes !== null && <><input id="refresh-minutes" type="number" min="1" max="10080" step="1" value={refreshText} onChange={(event) => setRefreshText(event.target.value)} aria-label="Scan interval in minutes" /><span>minutes</span><button type="submit">Save</button></>}
+        </form>
+      </section>
+
+      {capSettings.limitUsd !== null && (
+        <div className={`capNotice ${capSpent !== null && capSpent >= capSettings.limitUsd ? "capReached" : ""}`} role={capSpent !== null && capSpent >= capSettings.limitUsd ? "alert" : "status"}>
+          <div>
+            <strong>{capSpent !== null && capSpent >= capSettings.limitUsd ? "Monthly cost alert reached" : "Monthly cost alert"}</strong>
+            <span>{capSpent === null ? "Calculating this month's usage…" : `${formatUsd(capSpent)} of ${formatUsd(capSettings.limitUsd)} since ${capSettings.resetMonth === month ? "your last reset" : "the first of the month"}${capMissingRates ? " · Some models need rates, so actual cost may be higher." : ""}`}</span>
+            {capError && <span>{capError}</span>}
+          </div>
+          <button type="button" disabled={capCost === null} onClick={() => { if (month && capCost !== null) setCapSettings((current) => ({ ...current, resetMonth: month, resetBaselineUsd: capCost })); }}>Reset now</button>
+        </div>
+      )}
 
       {error && <div className="error">{error}</div>}
       {pricingError && <div className="error">{pricingError}</div>}

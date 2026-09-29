@@ -8,7 +8,7 @@ const desktopApi: DesktopApi = {
   getModelUsage: (from, to) => ipcRenderer.invoke(desktopChannels.getModelUsage, from, to),
   getPricing: (models) => ipcRenderer.invoke(desktopChannels.getPricing, models),
   savePricing: (update) => ipcRenderer.invoke(desktopChannels.savePricing, update),
-  rescan: () => ipcRenderer.invoke(desktopChannels.rescan)
+  rescan: (force) => ipcRenderer.invoke(desktopChannels.rescan, force ?? true)
 };
 
 contextBridge.exposeInMainWorld("desktopApi", desktopApi);

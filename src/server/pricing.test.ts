@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getModelPricing, parseAnthropicPricing, parseGitHubCopilotPricing, parseOpenAIPricing, setManualPricing } from "./pricing";
+import { getModelPricing, parseAnthropicPricing, parseGitHubCopilotPricing, parseOpenAIMarkdownPricing, parseOpenAIPricing, setManualPricing } from "./pricing";
 
 describe("pricing lookup", () => {
   it("finds OpenAI catalog pricing by exact model", () => {
@@ -21,10 +21,14 @@ describe("pricing lookup", () => {
   });
 
   it.each([
-    ["gpt-5.6", 5, 0.5, 30],
-    ["gpt-5.6-sol", 5, 0.5, 30],
-    ["gpt-5.6-terra", 2.5, 0.25, 15],
-    ["gpt-5.6-luna", 1, 0.1, 6],
+    ["gpt-5.6", 4, 0.4, 20],
+    ["gpt-5.6-sol", 4, 0.4, 20],
+    ["gpt-5.6-terra", 2, 0.2, 12],
+    ["gpt-5.6-luna", 0.2, 0.02, 1.2],
+    ["gpt-6-astra", 10, 1, 50],
+    ["gpt-6.1-sol", 2, 0.1, 10],
+    ["gpt-6-luna", 0.1, 0.01, 0.5],
+    ["claude-opus-5.5", 4, 0.2, 20],
     ["claude-sonnet-5", 2, 0.2, 10]
   ])("has a verified offline fallback for %s", (model, input, cached, output) => {
     const pricing = getModelPricing(model as string);
@@ -63,7 +67,7 @@ describe("pricing lookup", () => {
       cachedInputUsdPerMillion: 0.2,
       outputUsdPerMillion: 10
     });
-    expect(catalog.get("claude-sonnet-5")?.notes).toHaveLength(2);
+    expect(catalog.get("claude-sonnet-5")?.notes).toHaveLength(1);
   });
 
   it("parses OpenAI's official standard-rate HTML table", () => {
@@ -86,6 +90,19 @@ describe("pricing lookup", () => {
     });
   });
 
+  it("parses only OpenAI's standard Markdown tier and records excluded tiers", () => {
+    const markdown = `### Standard pricing data
+| Model | Short context input | Short context cached input | Short context cache writes | Short context output | Long context input | Long context cached input | Long context cache writes | Long context output |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| gpt-6-astra | $10.00 | $1.00 | $12.50 | $50.00 | $20.00 | $2.00 | $25.00 | $75.00 |
+
+### Batch pricing data
+| gpt-6-astra | $5.00 | $0.50 | $6.25 | $25.00 | $10.00 | $1.00 | $12.50 | $37.50 |`;
+    const catalog = parseOpenAIMarkdownPricing(markdown, "2026-09-29");
+    expect(catalog.get("gpt-6-astra")).toMatchObject({ inputUsdPerMillion: 10, cachedInputUsdPerMillion: 1, outputUsdPerMillion: 50 });
+    expect(catalog.get("gpt-6-astra")?.notes).toHaveLength(2);
+  });
+
   it("parses Anthropic's official Markdown pricing table", () => {
     const markdown = `
 | Model | Base Input Tokens | 5m Cache Writes | 1h Cache Writes | Cache Hits & Refreshes | Output Tokens |
@@ -100,7 +117,7 @@ describe("pricing lookup", () => {
       cachedInputUsdPerMillion: 1,
       outputUsdPerMillion: 50
     });
-    expect(catalog.get("claude-sonnet-5")?.notes).toHaveLength(2);
+    expect(catalog.get("claude-sonnet-5")?.notes).toHaveLength(1);
   });
 
   it("does not invent a rate for Copilot code review's undisclosed model", () => {

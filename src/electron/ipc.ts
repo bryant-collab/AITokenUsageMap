@@ -28,7 +28,8 @@ export const registerDesktopIpc = (isTrustedFrame: TrustedFrame): void => {
   });
   handle(desktopChannels.getPricing, (models: unknown) => getPricingForModels(assertModels(models)));
   handle(desktopChannels.savePricing, (update: unknown) => setManualPricing(assertPricingUpdate(update)));
-  handle(desktopChannels.rescan, async () => {
-    await scanAllLogs(true);
+  handle(desktopChannels.rescan, async (force: unknown) => {
+    if (typeof force !== "boolean") throw new Error("Invalid scan mode.");
+    await scanAllLogs(force);
   });
 };
