@@ -30,10 +30,10 @@ const config: ForgeConfig = {
     }),
     new MakerZIP({}, ["darwin"]),
     new MakerDeb({
-      options: { icon: linuxIcon }
+      options: { icon: linuxIcon, bin: "ai-token-usage" }
     }),
     new MakerRpm({
-      options: { icon: linuxIcon }
+      options: { icon: linuxIcon, bin: "ai-token-usage" }
     })
   ],
   plugins: [
