@@ -3,10 +3,12 @@ import { pathToFileURL } from "node:url";
 import { app, BrowserWindow, net, protocol, session, shell } from "electron";
 import { configureUserDataPath } from "../server/config";
 import { registerDesktopIpc } from "./ipc";
+import { handleSquirrelEvent } from "./squirrel";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
+const squirrelEventHandled = handleSquirrelEvent();
 const APP_HOST = "bundle";
 const EXTERNAL_HOSTS = new Set([
   "developers.openai.com",
@@ -23,8 +25,8 @@ protocol.registerSchemesAsPrivileged([{
   }
 }]);
 
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
-if (!hasSingleInstanceLock) app.quit();
+const hasSingleInstanceLock = !squirrelEventHandled && app.requestSingleInstanceLock();
+if (!squirrelEventHandled && !hasSingleInstanceLock) app.quit();
 
 let mainWindow: BrowserWindow | null = null;
 

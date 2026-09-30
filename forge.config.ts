@@ -23,6 +23,7 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({
       name: "ai_token_usage",
+      exe: "ai-token-usage.exe",
       setupIcon: `${iconRoot}.ico`
     }),
     new MakerDMG({
