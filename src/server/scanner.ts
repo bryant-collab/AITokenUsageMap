@@ -11,7 +11,7 @@ import { parseClaudeUsageFile } from "./claudeParser";
 import { estimateClaudeUnloggedUsage } from "./claudeReconcile";
 
 // Bump when parsed summaries gain fields so cached files are parsed again.
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 
 type CacheEntry = {
   key: string;
@@ -63,11 +63,17 @@ const harnesses: Record<HarnessId, HarnessConfig> = {
       caveats: [
         "Input, cached input, output, and reasoning output come from local token_count events; older or partial records may only expose cumulative totals.",
         "Totals follow the values reported by Codex logs when present, so reasoning output may be a separate diagnostic field rather than an additive extra.",
+        "History that subagent and forked sessions replay from their parent, and token events Codex repeats without a new request, are not counted again.",
         "Local files do not prove account-wide usage, billing usage, or usage from other devices."
       ]
     },
     roots: appConfig.codexRoots,
-    collectFiles: async (roots) => collectMatchingFiles(roots, (entry) => entry.name.startsWith("rollout-") && entry.name.endsWith(".jsonl")),
+    collectFiles: async (roots) => {
+      // Codex compresses older rollouts, and a rollout can briefly exist in both forms.
+      const files = await collectMatchingFiles(roots, (entry) => entry.name.startsWith("rollout-") && /\.jsonl(\.zst)?$/.test(entry.name));
+      const uncompressed = new Set(files.filter((file) => file.endsWith(".jsonl")));
+      return files.filter((file) => !file.endsWith(".zst") || !uncompressed.has(file.slice(0, -".zst".length)));
+    },
     parseFile: parseRolloutFile
   },
   "github-copilot": {

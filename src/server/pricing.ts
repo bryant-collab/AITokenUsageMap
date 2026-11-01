@@ -31,6 +31,7 @@ const fallbackCatalog = new Map<string, CatalogEntry>([
   ["gpt-5.6-luna", { provider: "openai", inputUsdPerMillion: 0.2, cachedInputUsdPerMillion: 0.02, outputUsdPerMillion: 1.2, sourceUrl: OPENAI_PRICING_URL, notes: ["Long-context requests have higher rates; this estimate uses the default tier."] }],
   ["gpt-6-astra", { provider: "openai", inputUsdPerMillion: 10, cachedInputUsdPerMillion: 1, outputUsdPerMillion: 50, sourceUrl: OPENAI_PRICING_URL, notes: ["Long-context requests have higher rates; this estimate uses the default tier."] }],
   ["gpt-6.1-sol", { provider: "openai", inputUsdPerMillion: 2, cachedInputUsdPerMillion: 0.1, outputUsdPerMillion: 10, sourceUrl: OPENAI_PRICING_URL, notes: ["Long-context requests have higher rates; this estimate uses the default tier."] }],
+  ["gpt-6.1-terra", { provider: "openai", inputUsdPerMillion: 1, cachedInputUsdPerMillion: 0.05, outputUsdPerMillion: 5, sourceUrl: OPENAI_PRICING_URL, notes: ["Long-context requests have higher rates; this estimate uses the default tier."] }],
   ["gpt-6-sol", { provider: "openai", inputUsdPerMillion: 2, cachedInputUsdPerMillion: 0.2, outputUsdPerMillion: 10, sourceUrl: OPENAI_PRICING_URL, notes: ["Long-context requests have higher rates; this estimate uses the default tier."] }],
   ["gpt-6-luna", { provider: "openai", inputUsdPerMillion: 0.1, cachedInputUsdPerMillion: 0.01, outputUsdPerMillion: 0.5, sourceUrl: OPENAI_PRICING_URL, notes: ["Long-context requests have higher rates; this estimate uses the default tier."] }],
   ["chat-latest", { provider: "openai", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, outputUsdPerMillion: 30, sourceUrl: OPENAI_PRICING_URL }],
@@ -257,20 +258,37 @@ export const parseOpenAIPricing = (html: string, checkedAt: string): Map<string,
 export const parseOpenAIMarkdownPricing = (markdown: string, checkedAt: string): Map<string, CatalogEntry> => {
   const catalog = new Map<string, CatalogEntry>();
   const standard = markdown.match(/### Standard pricing data\s*\n([\s\S]*?)(?=\n\s*### |\n\s*Batch\s*\n|$)/i)?.[1] ?? "";
+  let headers: string[] | null = null;
   for (const line of standard.split(/\r?\n/)) {
-    if (!line.trim().startsWith("|") || !line.trim().endsWith("|")) continue;
+    if (!line.trim().startsWith("|") || !line.trim().endsWith("|")) {
+      headers = null;
+      continue;
+    }
     const cells = markdownCells(line);
-    if (cells.length < 5 || cells[0] === "Model" || isSeparatorRow(cells)) continue;
+    if (isSeparatorRow(cells)) continue;
+    if (cells[0].toLowerCase() === "model") {
+      headers = cells.map((cell) => cell.toLowerCase());
+      continue;
+    }
+    if (!headers) continue;
+
+    const columns = headers;
+    const cell = (...names: string[]): string | undefined => {
+      const index = columns.findIndex((header) => names.includes(header));
+      return index >= 0 ? cells[index] : undefined;
+    };
     const rawModel = cells[0];
     const match = rawModel.match(/^((?:gpt|chatgpt|o\d|codex)[a-z0-9.-]*(?:-[a-z0-9.-]+)*)/i);
     if (!match) continue;
-    const input = priceFromCell(cells[1]);
-    const cached = priceFromCell(cells[2]);
-    const output = priceFromCell(cells[4]);
+    const input = priceFromCell(cell("short context input", "input"));
+    const cached = priceFromCell(cell("short context cached input", "cached input"));
+    const output = priceFromCell(cell("short context output", "output"));
     if (input === null || output === null) continue;
+    // Cached input always costs less than input, so a higher value means the table was misread.
+    if (cached !== null && cached > input) continue;
     const notes: string[] = [];
-    if (priceFromCell(cells[5]) !== null) notes.push("Long-context requests have higher rates; this estimate uses the default tier.");
-    if (priceFromCell(cells[3]) !== null) notes.push("Cache writes have a separate rate that is not included in this estimate.");
+    if (priceFromCell(cell("long context input", "long context")) !== null) notes.push("Long-context requests have higher rates; this estimate uses the default tier.");
+    if (priceFromCell(cell("short context 30m write", "short context 12h write", "short context cache writes", "cache write")) !== null) notes.push("Cache writes have a separate rate that is not included in this estimate.");
     catalog.set(normalizePricingModel(match[1]), {
       provider: "openai",
       inputUsdPerMillion: input,

@@ -129,7 +129,7 @@ Accuracy guidance:
 
 ## Notes
 
-The Codex scanner streams rollout files and only parses session metadata, model context, and `token_count` events. Usage is counted from `last_token_usage` when present, with cumulative delta fallback for older records.
+The Codex scanner streams rollout files, including compressed `.jsonl.zst` ones, and only parses session metadata, model context, `token_usage_record` entries, and `token_count` events. Usage comes from `token_usage_record` when a request has one. Otherwise it comes from `last_token_usage`, with cumulative delta fallback for older records. Token events that subagent and forked sessions replay from their parent, and events repeated with an unchanged cumulative total, are not counted.
 
 The GitHub Copilot scanner streams VS Code Copilot debug JSONL files and counts `llm_request` events with numeric token fields. It also scans Copilot CLI `session-state/**/events.jsonl` files and counts per-model `session.shutdown` usage aggregates, preferring per-request `assistant.usage` events if a future CLI version persists them. Active CLI child-agent records can mention their model before shutdown, but they are not counted until complete usage fields are available. These logs are unofficial local data, so field names and availability may change.
 
