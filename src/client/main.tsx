@@ -119,7 +119,9 @@ const selectedMonthStats = (summary: SummaryResponse, selectedDate: string | nul
 };
 
 type CostRow = TokenUsage & {
+  key: string;
   model: string;
+  estimated: boolean;
   dates: Set<string>;
   harnesses: Set<string>;
   events: number;
@@ -129,9 +131,11 @@ type CostRow = TokenUsage & {
   totalCostUsd: number | null;
 };
 
-const emptyCostRow = (model: string): CostRow => ({
+const emptyCostRow = (model: string, estimated: boolean): CostRow => ({
   ...emptyUsage(),
+  key: `${model}|${estimated ? "estimated" : "logged"}`,
   model,
+  estimated,
   dates: new Set<string>(),
   harnesses: new Set<string>(),
   events: 0,
@@ -551,10 +555,11 @@ function CostAnalysisPanel({
   const rows = useMemo(() => {
     const byModel = new Map<string, CostRow>();
     for (const item of activeUsage?.rows ?? []) {
-      let row = byModel.get(item.model);
+      const candidate = emptyCostRow(item.model, item.estimated === true);
+      let row = byModel.get(candidate.key);
       if (!row) {
-        row = emptyCostRow(item.model);
-        byModel.set(item.model, row);
+        row = candidate;
+        byModel.set(row.key, row);
       }
 
       addUsage(row, item);
@@ -578,12 +583,12 @@ function CostAnalysisPanel({
 
     return [...byModel.values()].sort((a, b) => {
       const costSort = (b.totalCostUsd ?? -1) - (a.totalCostUsd ?? -1);
-      return costSort || b.totalTokens - a.totalTokens || a.model.localeCompare(b.model);
+      return costSort || b.totalTokens - a.totalTokens || a.key.localeCompare(b.key);
     });
   }, [activeUsage, pricingByModel]);
 
   const knownCost = rows.reduce((sum, row) => sum + (row.totalCostUsd ?? 0), 0);
-  const needsRates = rows.filter((row) => row.totalCostUsd === null).length;
+  const needsRates = new Set(rows.filter((row) => row.totalCostUsd === null).map((row) => row.model)).size;
   const lookupModels = rows.filter((row) => pricingByModel[row.model]?.source === "catalog").length;
   const validationMessage = !startText.trim() || !endText.trim()
     ? "Choose a start and end date."
@@ -647,10 +652,12 @@ function CostAnalysisPanel({
             <tbody>
               {rows.map((row) => {
                 const pricing = pricingByModel[row.model];
+                const cacheWrites = (row.cacheWrite5mTokens ?? 0) + (row.cacheWrite1hTokens ?? 0);
                 return (
-                  <tr key={row.model}>
+                  <tr key={row.key}>
                     <td>
                       <strong title={row.model}>{row.model}</strong>
+                      {row.estimated && <small title="Claude Code reported this usage in a session total but did not log the requests.">Estimated, not logged per request</small>}
                       <small>{[...row.harnesses].sort().join(", ")}</small>
                       <span className={`sourceBadge source-${pricing?.source ?? "loading"}`}>{pricingSourceLabel(pricing)}</span>
                     </td>
@@ -661,6 +668,7 @@ function CostAnalysisPanel({
                     <td>
                       <span>In {formatTokens(row.billableInputTokens)}</span>
                       <span>Cached {formatTokens(row.billableCachedInputTokens)}</span>
+                      {cacheWrites > 0 && <span>Includes writes {formatTokens(cacheWrites)}</span>}
                       <span>Out {formatTokens(row.billableOutputTokens)}</span>
                     </td>
                     <td className="costRateCell">
@@ -689,7 +697,7 @@ function CostAnalysisPanel({
       {!loading && validRange && !activeUsage && (
         <div className="emptyPanel">Loading cost range...</div>
       )}
-      <p className="costFootnote">Estimates use official standard per-token rates. Subscription allowances, long-context requests, regional routing, batch discounts, cache writes, and Copilot code review's undisclosed model may differ from this local estimate.</p>
+      <p className="costFootnote">Estimates use official standard per-token rates. Claude Code cache writes are priced at 1.25x (5-minute) or 2x (1-hour) the input rate. Subscription allowances, long-context requests, regional routing, batch discounts, other providers' cache writes, and Copilot code review's undisclosed model may differ from this local estimate.</p>
     </section>
   );
 }
@@ -743,9 +751,9 @@ function DayDetails({ day }: { day: DayResponse | null }) {
         </thead>
         <tbody>
           {day.sessions.map((session) => (
-            <tr key={`${session.sessionId}-${session.model}`}>
+            <tr key={`${session.sessionId}-${session.model}-${session.estimated ? "estimated" : "logged"}`}>
               <td className="ellipsisCell" title={session.cwd ?? session.sessionId}>{session.cwd ? session.cwd.split(/[\\/]/).slice(-2).join("/") : session.sessionId.slice(0, 8)}</td>
-              <td className="ellipsisCell" title={session.model}>{session.model}</td>
+              <td className="ellipsisCell" title={session.estimated ? `${session.model}: estimated from the session total, not logged per request` : session.model}>{session.model}{session.estimated && <small className="estimatedLabel">Estimated</small>}</td>
               <td className="tokenMixCell"><SessionTokenMix usage={session} /></td>
             </tr>
           ))}

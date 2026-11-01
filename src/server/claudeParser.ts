@@ -69,6 +69,12 @@ const usageFromParts = (inputTokens: number, cachedInputTokens: number, outputTo
   totalTokens: totalTokens ?? inputTokens + cachedInputTokens + outputTokens
 });
 
+const withCacheWrites = (usage: TokenUsage, write5mTokens: number, write1hTokens: number): TokenUsage => {
+  if (write5mTokens > 0) usage.cacheWrite5mTokens = write5mTokens;
+  if (write1hTokens > 0) usage.cacheWrite1hTokens = write1hTokens;
+  return usage;
+};
+
 const totalFromUnknown = (value: unknown): number => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) return Number(value);
@@ -101,7 +107,17 @@ const usageFromClaudeUsage = (usage: Record<string, unknown>): TokenUsage | null
   const totalTokens = numberFrom(usage.totalTokens, usage.total_tokens) || inputTokens + cachedInputTokens + outputTokens;
 
   if (totalTokens <= 0) return null;
-  return usageFromParts(inputTokens, cachedInputTokens, outputTokens, totalTokens);
+  const cacheCreation = firstObject(usage.cache_creation);
+  // Writes with no reported duration use the shorter, default cache lifetime.
+  const cacheWrite1hTokens = Math.min(
+    cacheCreationInputTokens,
+    numberFrom(usage.cacheCreationEphemeral1hInputTokens, cacheCreation.ephemeral_1h_input_tokens)
+  );
+  return withCacheWrites(
+    usageFromParts(inputTokens, cachedInputTokens, outputTokens, totalTokens),
+    cacheCreationInputTokens - cacheWrite1hTokens,
+    cacheWrite1hTokens
+  );
 };
 
 const modelUsageBreakdowns = (modelUsage: unknown): Map<string, TokenUsage> => {
@@ -126,7 +142,18 @@ const scaleUsageToTotal = (breakdown: TokenUsage | undefined, totalTokens: numbe
   const inputTokens = Math.round((totalTokens * breakdown.inputTokens) / basis);
   const cachedInputTokens = Math.round((totalTokens * breakdown.cachedInputTokens) / basis);
   const outputTokens = Math.max(0, totalTokens - inputTokens - cachedInputTokens);
-  return usageFromParts(inputTokens, cachedInputTokens, outputTokens, totalTokens);
+  return withCacheWrites(
+    usageFromParts(inputTokens, cachedInputTokens, outputTokens, totalTokens),
+    Math.round((totalTokens * (breakdown.cacheWrite5mTokens ?? 0)) / basis),
+    Math.round((totalTokens * (breakdown.cacheWrite1hTokens ?? 0)) / basis)
+  );
+};
+
+const transcriptSessionId = (filePath: string): string => {
+  const parent = path.dirname(filePath);
+  return path.basename(parent) === "subagents"
+    ? path.basename(path.dirname(parent))
+    : path.basename(filePath, ".jsonl");
 };
 
 const claudeCoverageKey = (filePath: string): string => {
@@ -254,11 +281,16 @@ const parseTranscriptFile = async (filePath: string, timezone: string): Promise<
   const sessionByDayAndModel = new Map<string, SessionDayTotal>();
   const seenEvents = new Set<string>();
   const events: ParsedFileSummary["events"] = [];
+  const sessionId = transcriptSessionId(filePath);
+  let costState: ParsedFileSummary["claudeCostState"];
+  let forked = false;
   let parseErrors = 0;
   let tokenEvents = 0;
 
   for await (const line of rl) {
-    if (!line.includes("\"assistant\"") || !line.includes("\"usage\"")) continue;
+    const mayHaveUsage = line.includes("\"assistant\"") && line.includes("\"usage\"");
+    const mayHaveSessionMetadata = line.includes("\"cost-state\"") || line.includes("\"forkedFrom\"");
+    if (!mayHaveUsage && !mayHaveSessionMetadata) continue;
 
     let record: Record<string, unknown>;
     try {
@@ -267,6 +299,16 @@ const parseTranscriptFile = async (filePath: string, timezone: string): Promise<
       parseErrors += 1;
       continue;
     }
+
+    if (record.forkedFrom) forked = true;
+    if (record.type === "cost-state") {
+      // Claude Code rewrites this cumulative record, so only the last one in a transcript counts.
+      if (record.sessionId === sessionId) {
+        costState = { modelUsage: Object.fromEntries(modelUsageBreakdowns(record.modelUsage)) };
+      }
+      continue;
+    }
+    if (!mayHaveUsage) continue;
 
     const parsed = parseTranscriptRecord(record, filePath);
     if (!parsed || seenEvents.has(parsed.dedupKey)) continue;
@@ -298,7 +340,10 @@ const parseTranscriptFile = async (filePath: string, timezone: string): Promise<
     rateLimits: [],
     latestRateLimit: null,
     parseErrors,
-    tokenEvents
+    tokenEvents,
+    claudeSessionId: sessionId,
+    ...(costState && { claudeCostState: costState }),
+    ...(forked && { claudeForked: true })
   };
 };
 

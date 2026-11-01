@@ -14,6 +14,8 @@ export const addUsage = <T extends TokenUsage>(target: T, usage: TokenUsage): T 
   target.outputTokens += usage.outputTokens;
   target.reasoningOutputTokens += usage.reasoningOutputTokens;
   target.totalTokens += usage.totalTokens;
+  if (usage.cacheWrite5mTokens) target.cacheWrite5mTokens = (target.cacheWrite5mTokens ?? 0) + usage.cacheWrite5mTokens;
+  if (usage.cacheWrite1hTokens) target.cacheWrite1hTokens = (target.cacheWrite1hTokens ?? 0) + usage.cacheWrite1hTokens;
   return target;
 };
 

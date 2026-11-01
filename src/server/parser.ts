@@ -28,6 +28,14 @@ export type ParsedFileSummary = {
   latestRateLimit: RateLimitSnapshot | null;
   parseErrors: number;
   tokenEvents: number;
+  /** Claude session this transcript belongs to; subagent transcripts use their parent session's id. */
+  claudeSessionId?: string;
+  /** The session's last cost-state record, which totals usage per model across its transcripts. */
+  claudeCostState?: {
+    modelUsage: Record<string, TokenUsage>;
+  };
+  /** The transcript contains records copied from a forked parent session. */
+  claudeForked?: boolean;
 };
 
 const rawUsageToUsage = (raw: RawUsage | null | undefined): TokenUsage | null => {

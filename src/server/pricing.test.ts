@@ -29,7 +29,9 @@ describe("pricing lookup", () => {
     ["gpt-6.1-sol", 2, 0.1, 10],
     ["gpt-6-luna", 0.1, 0.01, 0.5],
     ["claude-opus-5.5", 4, 0.2, 20],
-    ["claude-sonnet-5", 2, 0.2, 10]
+    ["claude-sonnet-5.5", 2, 0.1, 10],
+    ["claude-sonnet-5", 2, 0.2, 10],
+    ["claude-haiku-5-5", 0.1, 0.01, 0.5]
   ])("has a verified offline fallback for %s", (model, input, cached, output) => {
     const pricing = getModelPricing(model as string);
     expect(pricing.source).toBe("catalog");
@@ -118,6 +120,23 @@ describe("pricing lookup", () => {
       outputUsdPerMillion: 50
     });
     expect(catalog.get("claude-sonnet-5")?.notes).toHaveLength(1);
+  });
+
+  it("keeps the lowest tier when Anthropic lists a model by prompt size", () => {
+    const markdown = `
+| Model | Base input tokens | 5m cache writes | 1h cache writes | Cache hits and refreshes | Output tokens |
+| :- | :- | :- | :- | :- | :- |
+| Claude Haiku 5.5 (for prompts up to 100,000 tokens) | $0.10 / MTok | $0.125 / MTok | $0.20 / MTok | $0.01 / MTok | $0.50 / MTok |
+| Claude Haiku 5.5 (for prompts over 100,000 tokens) | $0.50 / MTok | $0.625 / MTok | $1 / MTok | $0.05 / MTok | $2.50 / MTok |
+`;
+    const haiku = parseAnthropicPricing(markdown, "2026-11-01").get("claude-haiku-5.5");
+
+    expect(haiku).toMatchObject({
+      inputUsdPerMillion: 0.1,
+      cachedInputUsdPerMillion: 0.01,
+      outputUsdPerMillion: 0.5
+    });
+    expect(haiku?.notes).toHaveLength(2);
   });
 
   it("does not invent a rate for Copilot code review's undisclosed model", () => {

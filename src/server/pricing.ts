@@ -46,11 +46,12 @@ const fallbackCatalog = new Map<string, CatalogEntry>([
   ["claude-opus-4.5", { provider: "anthropic", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, outputUsdPerMillion: 25, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-opus-4.1", { provider: "anthropic", inputUsdPerMillion: 15, cachedInputUsdPerMillion: 1.5, outputUsdPerMillion: 75, sourceUrl: ANTHROPIC_PRICING_URL, notes: ["Deprecated model pricing."] }],
   ["claude-opus-4", { provider: "anthropic", inputUsdPerMillion: 15, cachedInputUsdPerMillion: 1.5, outputUsdPerMillion: 75, sourceUrl: ANTHROPIC_PRICING_URL, notes: ["Retired model pricing except on selected partner platforms."] }],
-  ["claude-sonnet-5.5", { provider: "anthropic", inputUsdPerMillion: 2, cachedInputUsdPerMillion: 0.2, outputUsdPerMillion: 10, sourceUrl: ANTHROPIC_PRICING_URL }],
+  ["claude-sonnet-5.5", { provider: "anthropic", inputUsdPerMillion: 2, cachedInputUsdPerMillion: 0.1, outputUsdPerMillion: 10, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-sonnet-5", { provider: "anthropic", inputUsdPerMillion: 2, cachedInputUsdPerMillion: 0.2, outputUsdPerMillion: 10, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-sonnet-4.6", { provider: "anthropic", inputUsdPerMillion: 3, cachedInputUsdPerMillion: 0.3, outputUsdPerMillion: 15, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-sonnet-4.5", { provider: "anthropic", inputUsdPerMillion: 3, cachedInputUsdPerMillion: 0.3, outputUsdPerMillion: 15, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-sonnet-4", { provider: "anthropic", inputUsdPerMillion: 3, cachedInputUsdPerMillion: 0.3, outputUsdPerMillion: 15, sourceUrl: ANTHROPIC_PRICING_URL, notes: ["Retired model pricing except on selected partner platforms."] }],
+  ["claude-haiku-5.5", { provider: "anthropic", inputUsdPerMillion: 0.1, cachedInputUsdPerMillion: 0.01, outputUsdPerMillion: 0.5, sourceUrl: ANTHROPIC_PRICING_URL, notes: ["Prompts over 100,000 tokens have higher rates; this estimate uses the lower tier."] }],
   ["claude-haiku-4.5", { provider: "anthropic", inputUsdPerMillion: 1, cachedInputUsdPerMillion: 0.1, outputUsdPerMillion: 5, sourceUrl: ANTHROPIC_PRICING_URL }],
   ["claude-haiku-3.5", { provider: "anthropic", inputUsdPerMillion: 0.8, cachedInputUsdPerMillion: 0.08, outputUsdPerMillion: 4, sourceUrl: ANTHROPIC_PRICING_URL, notes: ["Retired model pricing except on selected partner platforms."] }]
 ]);
@@ -310,9 +311,15 @@ export const parseAnthropicPricing = (markdown: string, checkedAt: string): Map<
     const output = priceFromCell(cell("output tokens"));
     if (!modelMatch || input === null || output === null) continue;
 
-    const displayModel = modelMatch[1];
-    const notes = ["Cache writes have a separate rate; cached tokens here use the cache-read rate."];
-    catalog.set(normalizePricingModel(displayModel), {
+    const key = normalizePricingModel(modelMatch[1]);
+    // Prompt-size tiers repeat a model across rows, lowest tier first.
+    const existing = catalog.get(key);
+    if (existing) {
+      existing.notes = [...(existing.notes ?? []), "Prompts in a higher size tier have higher rates; this estimate uses the lowest tier."];
+      continue;
+    }
+    const notes = ["Claude Code cache writes are priced at 1.25x (5-minute) or 2x (1-hour) the input rate."];
+    catalog.set(key, {
       provider: "anthropic",
       inputUsdPerMillion: input,
       cachedInputUsdPerMillion: cached,

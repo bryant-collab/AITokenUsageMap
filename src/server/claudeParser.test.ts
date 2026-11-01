@@ -97,6 +97,41 @@ describe("parseClaudeUsageFile", () => {
     expect(parsed.dailyPriority).toBe(1);
   });
 
+  it("separates cache writes by cache lifetime without changing cached totals", async () => {
+    const file = await writeTranscript([
+      JSON.stringify({
+        type: "assistant",
+        timestamp: "2026-06-01T12:00:00.000Z",
+        requestId: "req-split",
+        message: {
+          model: "claude-opus-5-5",
+          usage: {
+            input_tokens: 2,
+            cache_read_input_tokens: 100,
+            cache_creation_input_tokens: 50,
+            cache_creation: { ephemeral_5m_input_tokens: 20, ephemeral_1h_input_tokens: 30 },
+            output_tokens: 5
+          }
+        }
+      }),
+      JSON.stringify({
+        type: "assistant",
+        timestamp: "2026-06-01T12:01:00.000Z",
+        requestId: "req-unsplit",
+        message: {
+          model: "claude-opus-5-5",
+          usage: { input_tokens: 1, cache_creation_input_tokens: 7, output_tokens: 1 }
+        }
+      })
+    ]);
+
+    const session = (await parseClaudeUsageFile(file, "UTC")).daily["2026-06-01"][0];
+    expect(session.cachedInputTokens).toBe(157);
+    expect(session.cacheWrite5mTokens).toBe(27);
+    expect(session.cacheWrite1hTokens).toBe(30);
+    expect(session.totalTokens).toBe(166);
+  });
+
   it("deduplicates repeated transcript records by message id", async () => {
     const assistant = JSON.stringify({
       type: "assistant",

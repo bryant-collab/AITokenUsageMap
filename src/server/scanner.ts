@@ -8,6 +8,10 @@ import { appConfig } from "./config";
 import { parseRolloutFile, type ParsedFileSummary } from "./parser";
 import { parseCopilotDebugFile } from "./copilotParser";
 import { parseClaudeUsageFile } from "./claudeParser";
+import { estimateClaudeUnloggedUsage } from "./claudeReconcile";
+
+// Bump when parsed summaries gain fields so cached files are parsed again.
+const CACHE_VERSION = 3;
 
 type CacheEntry = {
   key: string;
@@ -15,7 +19,7 @@ type CacheEntry = {
 };
 
 type CacheFile = {
-  version: 2;
+  version: typeof CACHE_VERSION;
   entries: Record<string, CacheEntry>;
 };
 
@@ -30,6 +34,7 @@ type HarnessConfig = {
   roots: string[];
   collectFiles: (roots: string[]) => Promise<string[]>;
   parseFile: (filePath: string, timezone: string) => Promise<ParsedFileSummary>;
+  estimateFiles?: (summaries: Record<string, ParsedFileSummary>) => Record<string, ParsedFileSummary>;
 };
 
 const emptyDiagnostics = (): Diagnostics => ({
@@ -107,7 +112,8 @@ const harnesses: Record<HarnessId, HarnessConfig> = {
       caveats: [
         "Daily Claude Code totals prefer stats-cache.json, which is an aggregate cache; daily input/output splits may be proportioned from model-level breakdowns when exact daily splits are unavailable.",
         "Transcript-derived session detail can undercount on some Claude Code versions and may disappear after cleanup or when session persistence is disabled.",
-        "Claude cache read and cache creation tokens are merged into Cached input in this dashboard."
+        "Claude cache read and cache creation tokens are merged into Cached input in this dashboard, but cost estimates price cache writes separately.",
+        "Claude Code does not log every request. Prompt suggestions and session titles are added as estimated rows, dated to the session's last activity, using the cost-state total written when a session exits. Sessions that are still running, ended without that record, or were forked have no estimate."
       ]
     },
     roots: appConfig.claudeRoots,
@@ -115,7 +121,8 @@ const harnesses: Record<HarnessId, HarnessConfig> = {
       entry.name === "stats-cache.json"
       || (entry.name.endsWith(".jsonl") && fullPath.includes(`${path.sep}projects${path.sep}`))
     )),
-    parseFile: parseClaudeUsageFile
+    parseFile: parseClaudeUsageFile,
+    estimateFiles: estimateClaudeUnloggedUsage
   }
 };
 
@@ -150,9 +157,9 @@ const readCache = async (): Promise<CacheFile> => {
   try {
     const text = await fs.readFile(appConfig.cachePath, "utf8");
     const cache = JSON.parse(text) as CacheFile;
-    return cache.version === 2 ? cache : { version: 2, entries: {} };
+    return cache.version === CACHE_VERSION ? cache : { version: CACHE_VERSION, entries: {} };
   } catch {
-    return { version: 2, entries: {} };
+    return { version: CACHE_VERSION, entries: {} };
   }
 };
 
@@ -199,7 +206,7 @@ export const scanHarnessLogs = async (harnessId: HarnessId, force = false): Prom
   const cache = await readCache();
   const files = await harness.collectFiles(harness.roots);
   diagnostics.filesScanned = files.length;
-  const nextCache: CacheFile = { version: 2, entries: { ...cache.entries } };
+  const nextCache: CacheFile = { version: CACHE_VERSION, entries: { ...cache.entries } };
   const summaries: Record<string, ParsedFileSummary> = {};
 
   for (const filePath of files) {
@@ -229,7 +236,8 @@ export const scanHarnessLogs = async (harnessId: HarnessId, force = false): Prom
   diagnostics.lastScanCompletedAt = new Date().toISOString();
   await writeCache(nextCache);
 
-  store.files = summaries;
+  // Estimates depend on every transcript in a session, so they stay out of the per-file cache.
+  store.files = { ...summaries, ...harness.estimateFiles?.(summaries) };
   store.diagnostics = diagnostics;
   store.scannedAt = diagnostics.lastScanCompletedAt;
   return diagnostics;
@@ -436,7 +444,7 @@ export const getModelUsageRange = async (from: string, to: string): Promise<Mode
         if (date < from || date > to || !usesDailySummary(summary, date, priorities)) continue;
 
         for (const session of sessions) {
-          const key = `${harnessId}|${date}|${session.model}`;
+          const key = `${harnessId}|${date}|${session.model}|${session.estimated ? "estimated" : "logged"}`;
           let row = byHarnessDateAndModel.get(key);
           if (!row) {
             row = {
@@ -446,7 +454,8 @@ export const getModelUsageRange = async (from: string, to: string): Promise<Mode
               model: session.model,
               events: 0,
               sessions: 0,
-              sessionIds: new Set<string>()
+              sessionIds: new Set<string>(),
+              ...(session.estimated && { estimated: true })
             };
             byHarnessDateAndModel.set(key, row);
           }

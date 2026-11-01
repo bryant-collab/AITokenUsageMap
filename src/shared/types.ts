@@ -4,6 +4,10 @@ export type TokenUsage = {
   outputTokens: number;
   reasoningOutputTokens: number;
   totalTokens: number;
+  /** Portion of cachedInputTokens written to a 5-minute cache. Only set when a source reports cache writes. */
+  cacheWrite5mTokens?: number;
+  /** Portion of cachedInputTokens written to a 1-hour cache. Only set when a source reports cache writes. */
+  cacheWrite1hTokens?: number;
 };
 
 export type HarnessId = "codex" | "github-copilot" | "claude-code";
@@ -73,6 +77,8 @@ export type SessionDayTotal = TokenUsage & {
   events: number;
   firstSeen: string;
   lastSeen: string;
+  /** Usage inferred from a session-level total rather than from logged requests. */
+  estimated?: boolean;
 };
 
 export type RateLimitSnapshot = {
@@ -141,6 +147,8 @@ export type ModelUsageRangeRow = TokenUsage & {
   model: string;
   events: number;
   sessions: number;
+  /** Usage inferred from a session-level total rather than from logged requests. */
+  estimated?: boolean;
 };
 
 export type ModelUsageRangeResponse = {

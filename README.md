@@ -20,7 +20,7 @@ The Electron main process refreshes standard per-token rates from the official [
 
 The top controls let you set an optional monthly cost alert and choose manual scans or automatic scans at a configurable interval (60 minutes initially). The app displays an alert when the locally estimated cost since the first of the month reaches your limit; it never blocks requests. **Reset now** restarts the tracked amount from the current estimate. The alert resets automatically at the first of each month in the configured timezone. These preferences are saved locally for future app launches. A manual **Rescan** remains available in either mode.
 
-Cost values and the monthly alert are local estimates. Subscription allowances, long-context requests, regional routing, batch discounts, cache writes, missing model rates, and provider-side billing adjustments can differ from the displayed standard per-token estimate. GitHub does not disclose the underlying model used by Copilot code review, so `codex-auto-review` cannot be assigned an official token rate.
+Cost values and the monthly alert are local estimates. Claude Code cache writes are priced at 1.25x (5-minute) or 2x (1-hour) the input rate. Subscription allowances, long-context requests, regional routing, batch discounts, other providers' cache writes, missing model rates, and provider-side billing adjustments can differ from the displayed standard per-token estimate. GitHub does not disclose the underlying model used by Copilot code review, so `codex-auto-review` cannot be assigned an official token rate.
 
 ## Development
 
@@ -134,3 +134,5 @@ The Codex scanner streams rollout files and only parses session metadata, model 
 The GitHub Copilot scanner streams VS Code Copilot debug JSONL files and counts `llm_request` events with numeric token fields. It also scans Copilot CLI `session-state/**/events.jsonl` files and counts per-model `session.shutdown` usage aggregates, preferring per-request `assistant.usage` events if a future CLI version persists them. Active CLI child-agent records can mention their model before shutdown, but they are not counted until complete usage fields are available. These logs are unofficial local data, so field names and availability may change.
 
 The Claude Code scanner reads `stats-cache.json` for aggregate daily totals and streams Claude transcript JSONL files for assistant messages with `message.usage` token fields. Transcript token fields are version-sensitive, so aggregate totals are preferred whenever both sources are available.
+
+Claude Code does not write every request to its transcripts: prompt suggestions and session titles are missing. When a session exits, its transcript gets a `cost-state` record with the session's usage per model. The dashboard shows any usage beyond the logged requests as separate estimated rows dated to the session's last activity. Sessions that are still running, ended without that record, or were forked have no estimate.

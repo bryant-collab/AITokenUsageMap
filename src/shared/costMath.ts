@@ -2,6 +2,10 @@ import type { HarnessId, ModelPricing, TokenUsage } from "./types";
 
 export type CachedInputMode = "included" | "separate";
 
+// Anthropic prices cache writes as a multiple of the model's base input rate.
+const CACHE_WRITE_5M_INPUT_MULTIPLIER = 1.25;
+const CACHE_WRITE_1H_INPUT_MULTIPLIER = 2;
+
 export type BillableUsageParts = {
   inputTokens: number;
   cachedInputTokens: number;
@@ -11,6 +15,7 @@ export type BillableUsageParts = {
 export type UsageCostBreakdown = BillableUsageParts & {
   inputCostUsd: number | null;
   cachedInputCostUsd: number | null;
+  cacheWriteCostUsd: number | null;
   outputCostUsd: number | null;
   totalCostUsd: number | null;
 };
@@ -63,14 +68,25 @@ export const calculateUsageCost = (
   const parts = billableUsageParts(usage, cachedInputMode);
   const cachedRate = pricing.cachedInputUsdPerMillion ?? pricing.inputUsdPerMillion;
   const inputCostUsd = costFor(parts.inputTokens, pricing.inputUsdPerMillion);
-  const cachedInputCostUsd = costFor(parts.cachedInputTokens, cachedRate);
+  const write5mTokens = usage.cacheWrite5mTokens ?? 0;
+  const write1hTokens = usage.cacheWrite1hTokens ?? 0;
+  const cacheReadTokens = Math.max(0, parts.cachedInputTokens - write5mTokens - write1hTokens);
+  const writeRate = (multiplier: number): number | null => (
+    pricing.inputUsdPerMillion === null ? null : pricing.inputUsdPerMillion * multiplier
+  );
+  const cachedInputCostUsd = costFor(cacheReadTokens, cachedRate);
+  const cacheWriteCostUsd = sumCosts(
+    costFor(write5mTokens, writeRate(CACHE_WRITE_5M_INPUT_MULTIPLIER)),
+    costFor(write1hTokens, writeRate(CACHE_WRITE_1H_INPUT_MULTIPLIER))
+  );
   const outputCostUsd = costFor(parts.outputTokens, pricing.outputUsdPerMillion);
 
   return {
     ...parts,
     inputCostUsd,
     cachedInputCostUsd,
+    cacheWriteCostUsd,
     outputCostUsd,
-    totalCostUsd: sumCosts(inputCostUsd, cachedInputCostUsd, outputCostUsd)
+    totalCostUsd: sumCosts(inputCostUsd, cachedInputCostUsd, cacheWriteCostUsd, outputCostUsd)
   };
 };
