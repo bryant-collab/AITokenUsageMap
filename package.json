@@ -1,7 +1,7 @@
 {
   "name": "codex-token-usage",
   "productName": "AI Token Usage",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A private desktop dashboard for local AI coding token usage.",
   "author": "skunkmonkey",
   "license": "MIT",
